@@ -6,6 +6,7 @@ import '../config/app_theme.dart';
 import '../models/task_model.dart';
 import '../providers/task_provider.dart';
 import '../widgets/task_card.dart';
+import '../widgets/task_detail_sheet.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -170,6 +171,16 @@ class _CalendarScreenState extends State<CalendarScreen> {
                                 final task = selectedTasks[index];
                                 return TaskCard(
                                   task: task,
+                                  onTap: () => showTaskDetail(
+                                    context,
+                                    task,
+                                    onUpdated: () => context
+                                        .read<TaskProvider>()
+                                        .loadMonthTasks(
+                                          DateTime(_focusedDay.year, _focusedDay.month, 1),
+                                          DateTime(_focusedDay.year, _focusedDay.month + 1, 0),
+                                        ),
+                                  ),
                                   onToggle: () => context
                                       .read<TaskProvider>()
                                       .toggleComplete(

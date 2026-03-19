@@ -31,9 +31,11 @@ class TaskProvider extends ChangeNotifier {
     try {
       final today = DateTime.now().toIso8601String().split('T')[0];
       final data = await _dataSource.getTasksByDate(today);
-      _todayTasks = data.map((m) => TaskModel.fromMap(m)).toList();
+      final fetched = data.map((m) => TaskModel.fromMap(m)).toList();
+      _todayTasks = fetched; // solo reemplaza si la query tuvo éxito
     } catch (e) {
       debugPrint('Error loading today tasks: $e');
+      // NO sobreescribir _todayTasks si falla
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -116,20 +118,31 @@ class TaskProvider extends ChangeNotifier {
   }
 
   Future<void> addTask(Map<String, dynamic> taskData) async {
-    try {
-      final data = await _dataSource.createTask(taskData);
-      final task = TaskModel.fromMap(data);
-      final today = DateTime.now().toIso8601String().split('T')[0];
-      if (task.date.toIso8601String().split('T')[0] == today) {
-        _todayTasks.add(task);
-        _todayTasks.sort((a, b) => a.time.compareTo(b.time));
-      }
-      _monthTasks.add(task);
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error adding task: $e');
-      rethrow;
+    // 1. Insertar en Supabase
+    final data = await _dataSource.createTask(taskData);
+    final task = TaskModel.fromMap(data);
+
+    // 2. Agregar a la lista local de inmediato → UI se actualiza sin esperar
+    final today = DateTime.now().toIso8601String().split('T')[0];
+    if (task.date.toIso8601String().split('T')[0] == today) {
+      _todayTasks.add(task);
+      _todayTasks.sort((a, b) => a.time.compareTo(b.time));
     }
+    _monthTasks.add(task);
+    notifyListeners(); // ← reconstruye la UI inmediatamente
+  }
+
+  Future<void> updateTask(String id, Map<String, dynamic> taskData) async {
+    final data = await _dataSource.updateTask(id, taskData);
+    final updated = TaskModel.fromMap(data);
+
+    final todayIdx = _todayTasks.indexWhere((t) => t.id == id);
+    if (todayIdx != -1) _todayTasks[todayIdx] = updated;
+
+    final monthIdx = _monthTasks.indexWhere((t) => t.id == id);
+    if (monthIdx != -1) _monthTasks[monthIdx] = updated;
+
+    notifyListeners();
   }
 
   Future<void> deleteTask(String id) async {

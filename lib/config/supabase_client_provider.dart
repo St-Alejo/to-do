@@ -7,7 +7,7 @@ class SupabaseClientProvider {
   SupabaseClientProvider._(this.client);
 
   static void init({required String supabaseUrl, required String supabaseAnonKey}) {
-    final client = SupabaseClient(supabaseUrl, supabaseAnonKey);
-    instance = SupabaseClientProvider._(client);
+    // Usa el cliente del singleton de Supabase para compartir la misma sesión
+    instance = SupabaseClientProvider._(Supabase.instance.client);
   }
 }

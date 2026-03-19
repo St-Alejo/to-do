@@ -15,11 +15,11 @@ class TaskFileModel {
 
   factory TaskFileModel.fromMap(Map<String, dynamic> map) {
     return TaskFileModel(
-      id: map['id'] as String,
-      taskId: map['task_id'] as String,
-      fileUrl: map['file_url'] as String,
-      fileName: map['file_name'] as String,
-      createdAt: DateTime.parse(map['created_at'] as String),
+      id:        map['id']         as String? ?? '',
+      taskId:    map['task_id']    as String? ?? '',
+      fileUrl:   map['file_url']   as String? ?? '',
+      fileName:  map['file_name']  as String? ?? '',
+      createdAt: DateTime.tryParse(map['created_at'] as String? ?? '') ?? DateTime.now(),
     );
   }
 }

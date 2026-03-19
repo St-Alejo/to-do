@@ -36,6 +36,7 @@ class MainScreen extends StatelessWidget {
                 MaterialPageRoute(builder: (_) => const AddTaskScreen()),
               ).then((result) {
                 if (result == true) {
+                  // Sync en segundo plano con la DB para confirmar datos reales
                   taskProvider.loadTodayTasks();
                   taskProvider.loadWeekTasks();
                   statsProvider.loadStats();

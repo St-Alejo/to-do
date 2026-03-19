@@ -7,7 +7,7 @@ class TaskRemoteDataSource {
   Future<List<Map<String, dynamic>>> getTasksByDate(String date) async {
     final response = await _client
         .from('tasks')
-        .select('*, categories(*)')
+        .select('*')
         .eq('date', date)
         .order('time');
     return List<Map<String, dynamic>>.from(response);
@@ -17,7 +17,7 @@ class TaskRemoteDataSource {
       String startDate, String endDate) async {
     final response = await _client
         .from('tasks')
-        .select('*, categories(*)')
+        .select('*')
         .gte('date', startDate)
         .lte('date', endDate)
         .order('date')
@@ -29,7 +29,7 @@ class TaskRemoteDataSource {
       String startDate, String endDate) async {
     final response = await _client
         .from('tasks')
-        .select('*, categories(*)')
+        .select('*')
         .eq('is_completed', true)
         .gte('date', startDate)
         .lte('date', endDate)
@@ -41,7 +41,7 @@ class TaskRemoteDataSource {
       String startDate, String endDate) async {
     final response = await _client
         .from('tasks')
-        .select('*, categories(*)')
+        .select('*')
         .gte('date', startDate)
         .lte('date', endDate);
     return List<Map<String, dynamic>>.from(response);
@@ -51,7 +51,17 @@ class TaskRemoteDataSource {
     final response = await _client
         .from('tasks')
         .insert(data)
-        .select('*, categories(*)')
+        .select()      // sin join: evita errores cuando category_id es null
+        .single();
+    return response;
+  }
+
+  Future<Map<String, dynamic>> updateTask(String id, Map<String, dynamic> data) async {
+    final response = await _client
+        .from('tasks')
+        .update(data)
+        .eq('id', id)
+        .select()
         .single();
     return response;
   }

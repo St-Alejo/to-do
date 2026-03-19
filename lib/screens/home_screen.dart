@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../config/app_theme.dart';
 import '../providers/task_provider.dart';
 import '../widgets/task_card.dart';
+import '../widgets/task_detail_sheet.dart';
 import '../widgets/weekly_progress_ring.dart';
 import '../widgets/progress_bar_thumb.dart';
 
@@ -123,6 +124,14 @@ class _HomeScreenState extends State<HomeScreen> {
                           final task = provider.todayTasks[index];
                           return TaskCard(
                             task: task,
+                            onTap: () => showTaskDetail(
+                              context,
+                              task,
+                              onUpdated: () {
+                                provider.loadTodayTasks();
+                                provider.loadWeekTasks();
+                              },
+                            ),
                             onToggle: () => provider.toggleComplete(
                                 task.id, !task.isCompleted),
                             onDelete: () => _confirmDelete(context, provider, task.id),

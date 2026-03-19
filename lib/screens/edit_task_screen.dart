@@ -1,36 +1,45 @@
-import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../config/app_theme.dart';
-import '../config/supabase_client_provider.dart';
-import '../data/storage_remote_data_source.dart';
+import '../models/task_model.dart';
 import '../providers/category_provider.dart';
 import '../providers/task_provider.dart';
 import '../widgets/category_chip.dart';
 
-class AddTaskScreen extends StatefulWidget {
-  const AddTaskScreen({super.key});
+class EditTaskScreen extends StatefulWidget {
+  final TaskModel task;
+  const EditTaskScreen({super.key, required this.task});
 
   @override
-  State<AddTaskScreen> createState() => _AddTaskScreenState();
+  State<EditTaskScreen> createState() => _EditTaskScreenState();
 }
 
-class _AddTaskScreenState extends State<AddTaskScreen> {
+class _EditTaskScreenState extends State<EditTaskScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _titleController = TextEditingController();
-  final _descController = TextEditingController();
-  DateTime _selectedDate = DateTime.now();   // hoy por defecto
-  TimeOfDay _selectedTime = TimeOfDay.now(); // hora actual por defecto
+  late final TextEditingController _titleController;
+  late final TextEditingController _descController;
+  late DateTime _selectedDate;
+  late TimeOfDay _selectedTime;
   String? _selectedCategoryId;
-  final List<({String name, Uint8List bytes})> _attachedFiles = [];
   bool _isLoading = false;
 
   @override
   void initState() {
     super.initState();
+    // Pre-cargar datos de la tarea existente
+    _titleController = TextEditingController(text: widget.task.title);
+    _descController = TextEditingController(text: widget.task.description ?? '');
+    _selectedDate = widget.task.date;
+    _selectedCategoryId = widget.task.categoryId;
+
+    // Parsear el time string "HH:mm:ss" → TimeOfDay
+    final parts = widget.task.time.split(':');
+    _selectedTime = TimeOfDay(
+      hour: int.tryParse(parts[0]) ?? TimeOfDay.now().hour,
+      minute: int.tryParse(parts.length > 1 ? parts[1] : '0') ?? 0,
+    );
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<CategoryProvider>().loadCategories();
     });
@@ -49,28 +58,23 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
       initialDate: _selectedDate,
       firstDate: DateTime.now().subtract(const Duration(days: 365)),
       lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(primary: AppTheme.primary),
-          ),
-          child: child!,
-        );
-      },
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: AppTheme.primary),
+        ),
+        child: child!,
+      ),
     );
     if (picked != null && mounted) {
       final time = await showTimePicker(
         context: context,
         initialTime: _selectedTime,
-        builder: (context, child) {
-          return Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme:
-                  const ColorScheme.light(primary: AppTheme.primary),
-            ),
-            child: child!,
-          );
-        },
+        builder: (context, child) => Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(primary: AppTheme.primary),
+          ),
+          child: child!,
+        ),
       );
       setState(() {
         _selectedDate = picked;
@@ -79,29 +83,13 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     }
   }
 
-  Future<void> _pickFile() async {
-    final picker = ImagePicker();
-    final file = await picker.pickImage(source: ImageSource.gallery);
-    if (file != null) {
-      final bytes = await file.readAsBytes();
-      setState(() {
-        _attachedFiles.add((name: file.name, bytes: bytes));
-      });
-    }
-  }
-
-  Future<void> _confirm() async {
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-
     setState(() => _isLoading = true);
     try {
-      final user = Supabase.instance.client.auth.currentUser;
-      if (user == null) throw Exception('Not authenticated');
-
       final timeStr =
           '${_selectedTime.hour.toString().padLeft(2, '0')}:${_selectedTime.minute.toString().padLeft(2, '0')}:00';
 
-      // Si el id es local (fallback), no enviarlo a Supabase
       final categoryId = (_selectedCategoryId != null &&
               !_selectedCategoryId!.startsWith('local-'))
           ? _selectedCategoryId
@@ -115,27 +103,15 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
         'date': _selectedDate.toIso8601String().split('T')[0],
         'time': timeStr,
         'category_id': categoryId,
-        'is_completed': false,
-        'user_id': user.id,
       };
 
-      final taskProvider = context.read<TaskProvider>();
-      await taskProvider.addTask(taskData);
-
-      if (_attachedFiles.isNotEmpty) {
-        final storage = StorageRemoteDataSource(
-            SupabaseClientProvider.instance.client);
-        for (final file in _attachedFiles) {
-          await storage.uploadFile(
-              user.id, 'task', file.name, file.bytes);
-        }
-      }
+      await context.read<TaskProvider>().updateTask(widget.task.id, taskData);
 
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(content: Text('Error al guardar: $e')),
         );
       }
     } finally {
@@ -152,8 +128,21 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
           icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text('Adding Task'),
+        title: const Text('Editar Tarea'),
         centerTitle: true,
+        actions: [
+          TextButton(
+            onPressed: _isLoading ? null : _save,
+            child: const Text(
+              'Guardar',
+              style: TextStyle(
+                color: AppTheme.primary,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
+          ),
+        ],
       ),
       body: Consumer<CategoryProvider>(
         builder: (context, catProvider, _) {
@@ -164,15 +153,16 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Title field
+                  // Título
                   TextFormField(
                     controller: _titleController,
                     decoration: _inputDecoration('Task Title'),
-                    validator: (v) =>
-                        v == null || v.trim().isEmpty ? 'Title is required' : null,
+                    validator: (v) => v == null || v.trim().isEmpty
+                        ? 'El título es requerido'
+                        : null,
                   ),
                   const SizedBox(height: 16),
-                  // Description field
+                  // Descripción
                   Stack(
                     alignment: Alignment.topRight,
                     children: [
@@ -183,63 +173,32 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                       ),
                       const Padding(
                         padding: EdgeInsets.only(right: 12, top: 8),
-                        child: Text(
-                          '(Not Required)',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppTheme.textSecondary,
-                          ),
-                        ),
+                        child: Text('(Not Required)',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: AppTheme.textSecondary)),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  // Date button
+                  // Selector de fecha
                   _ActionButton(
                     onTap: _pickDate,
                     icon: Icons.calendar_today,
-                    label: DateFormat("d MMM yyyy, HH:mm").format(
+                    label: DateFormat('d MMM yyyy, HH:mm').format(
                       _selectedDate.copyWith(
                         hour: _selectedTime.hour,
                         minute: _selectedTime.minute,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  // Files button
-                  _ActionButton(
-                    onTap: _pickFile,
-                    icon: Icons.add,
-                    label: _attachedFiles.isEmpty
-                        ? 'Additional Files'
-                        : '${_attachedFiles.length} file(s) selected',
-                  ),
-                  if (_attachedFiles.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      children: _attachedFiles.map((f) {
-                        return Chip(
-                          label: Text(f.name,
-                              style: const TextStyle(fontSize: 11)),
-                          deleteIcon: const Icon(Icons.close, size: 14),
-                          onDeleted: () {
-                            setState(() => _attachedFiles.remove(f));
-                          },
-                        );
-                      }).toList(),
-                    ),
-                  ],
                   const SizedBox(height: 24),
-                  // Category section
-                  const Text(
-                    'Choose Category',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
-                    ),
-                  ),
+                  // Categoría
+                  const Text('Choose Category',
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary)),
                   const SizedBox(height: 12),
                   catProvider.isLoading
                       ? const Center(
@@ -256,11 +215,11 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                           }).toList(),
                         ),
                   const SizedBox(height: 32),
-                  // Confirm button
+                  // Botón guardar
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _confirm,
+                      onPressed: _isLoading ? null : _save,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: AppTheme.primary,
                         foregroundColor: Colors.white,
@@ -279,13 +238,10 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
                                 strokeWidth: 2,
                               ),
                             )
-                          : const Text(
-                              'Confirm Adding',
+                          : const Text('Guardar cambios',
                               style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w700)),
                     ),
                   ),
                   const SizedBox(height: 20),
@@ -356,14 +312,11 @@ class _ActionButton extends StatelessWidget {
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: AppTheme.primary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              child: Text(label,
+                  style: const TextStyle(
+                      color: AppTheme.primary,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500)),
             ),
             const Icon(Icons.chevron_right, color: AppTheme.primary),
           ],
